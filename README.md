@@ -29,7 +29,8 @@ That's it! Your calendar will sync automatically every hour.
 - 📅 Syncs working hours, absences (RTT, CA, etc.), and activities
 - ☁️ Direct integration with iCloud Calendar via CalDAV
 - 🤖 Headless browser authentication (supports JavaScript-based login)
-- 🐳 Docker container ready for Raspberry Pi deployment
+- � **Push notifications for planning changes** (via ntfy.sh)
+- �🐳 Docker container ready for Raspberry Pi deployment
 - 🏥 Health check endpoint for monitoring
 - ⚙️ Configurable sync intervals and date ranges
 
@@ -91,6 +92,14 @@ ICALENDAR_CALENDAR_NAME=Chronos Planning
 SYNC_DAYS_AHEAD=7
 SYNC_INTERVAL_MINUTES=60
 
+# Notification Configuration (Optional - for iPhone push notifications)
+# 1. Install ntfy app on iPhone: https://apps.apple.com/us/app/ntfy/id1625396347
+# 2. Choose a unique topic name (make it random for privacy!)
+# 3. Subscribe to your topic in the ntfy app
+NTFY_TOPIC=chronos-planning-YOUR_RANDOM_STRING
+NTFY_SERVER=https://ntfy.sh
+ENABLE_NOTIFICATIONS=true
+
 # Application Configuration
 APP_PORT=8000
 APP_HOST=0.0.0.0
@@ -100,6 +109,11 @@ APP_HOST=0.0.0.0
 - `CHRONOS_USERNAME`, `CHRONOS_PASSWORD`
 - `ICALENDAR_USERNAME`, `ICALENDAR_PASSWORD`
 
+**Optional for notifications:**
+- `NTFY_TOPIC` - Your unique notification channel (e.g., `chronos-laura-123abc`)
+- `ENABLE_NOTIFICATIONS` - Set to `true` to enable push notifications
+- `NTFY_SERVER` - Server URL (default: `https://ntfy.sh`)
+
 **Optional environment variables** (with defaults):
 - `CHRONOS_BASE_URL` (default: `https://chpcb.chronos-saas.com`)
 - `CHRONOS_AUTH_URL` (default: `https://auth-saas-chronos.asys.fr`)
@@ -107,10 +121,39 @@ APP_HOST=0.0.0.0
 - `ICALENDAR_CALENDAR_NAME` (default: `Chronos Planning`)
 - `SYNC_DAYS_AHEAD` (default: `7`)
 - `SYNC_INTERVAL_MINUTES` (default: `60`)
+- `ENABLE_NOTIFICATIONS` (default: `false`)
 - `APP_PORT` (default: `8000`)
 - `APP_HOST` (default: `0.0.0.0`)
 
-### 3. Build and Run with Docker
+### 3. (Optional) Set Up iPhone Push Notifications
+
+Get notified instantly when your planning changes!
+
+**Step 1:** Install the ntfy app on your iPhone
+- Download from App Store: [ntfy - push notifications](https://apps.apple.com/us/app/ntfy/id1625396347)
+- It's completely **free**, no account needed!
+
+**Step 2:** Choose a unique topic name
+- Pick something random for privacy: `chronos-laura-8472abc`
+- Add it to your `.env` file as `NTFY_TOPIC`
+
+**Step 3:** Subscribe to your topic in the app
+- Open ntfy app → Tap "+" → Enter your topic name → Subscribe
+
+**Step 4:** Enable notifications in `.env`
+```bash
+ENABLE_NOTIFICATIONS=true
+NTFY_TOPIC=chronos-laura-8472abc  # Use your random string
+```
+
+**That's it!** You'll now get notifications like:
+- **Nouveau Créneau:** "🆕 Nouveau créneau ajouté : Work: 07:15-19:15 le Lundi 04 Nov"
+- **Créneau Supprimé:** "❌ Créneau supprimé : RTT le Mardi 05 Nov"
+- **Créneau Modifié:** "✏️ Work: 08:00-17:00 / Avant : Lundi 04 Nov 08:00-17:00 / Maintenant : Lundi 04 Nov 07:00-16:00"
+
+**Note:** Events added exactly at your `SYNC_DAYS_AHEAD` boundary won't trigger notifications (to avoid noise from the sync window moving forward).
+
+### 4. Build and Run with Docker
 
 **Step 1:** Create a `.env` file with your credentials:
 
