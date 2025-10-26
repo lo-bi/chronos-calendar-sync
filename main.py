@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from chronos_client import ChronosClient
 from chronos_parser import ChronosParser
 from calendar_sync import CalendarSync
+from notifier import Notifier
+from change_detector import ChangeDetector
 
 # Load environment variables from .env file
 load_dotenv()
@@ -62,6 +64,11 @@ def load_config():
             'days_ahead': int(get_env('SYNC_DAYS_AHEAD', '7', required=False)),
             'interval_minutes': int(get_env('SYNC_INTERVAL_MINUTES', '60', required=False))
         },
+        'notifications': {
+            'enabled': get_env('ENABLE_NOTIFICATIONS', 'false', required=False).lower() == 'true',
+            'ntfy_topic': get_env('NTFY_TOPIC', '', required=False),
+            'ntfy_server': get_env('NTFY_SERVER', 'https://ntfy.sh', required=False)
+        },
         'app': {
             'port': int(get_env('APP_PORT', '8000', required=False)),
             'host': get_env('APP_HOST', '0.0.0.0', required=False)
@@ -72,7 +79,7 @@ def load_config():
     return config
 
 
-def perform_sync(config):
+def perform_sync(config, is_first_run=False):
     """Perform a single sync operation"""
     global sync_state
     
@@ -116,6 +123,72 @@ def perform_sync(config):
         
         logger.info(f"Total events to sync: {len(all_events)}")
         
+        # Initialize notifier if enabled
+        notifier = None
+        if config['notifications']['enabled'] and config['notifications']['ntfy_topic']:
+            notifier = Notifier(
+                topic=config['notifications']['ntfy_topic'],
+                server=config['notifications']['ntfy_server'],
+                enabled=True
+            )
+            logger.info("Notifications enabled")
+            
+            # Send test notification on first run only
+            if is_first_run:
+                notifier.send_test()
+        
+        # Detect changes (only if not first run)
+        if not is_first_run and notifier:
+            change_detector = ChangeDetector()
+            new_events, deleted_events, modified_events = change_detector.detect_changes(
+                all_events,
+                config['sync']['days_ahead']
+            )
+            
+            # Send notifications for changes
+            for event in new_events:
+                title = event.get_calendar_title()
+                time_str = change_detector.format_event_time(change_detector._event_to_dict(event))
+                logger.info(f"📱 Notifying: New event - {title} at {time_str}")
+                
+                if event.all_day:
+                    notifier.send_new_shift(title, time_str)
+                else:
+                    # Extract time portion
+                    parts = time_str.split()
+                    date_part = ' '.join(parts[:3]) if len(parts) >= 3 else time_str
+                    time_part = parts[-1] if len(parts) >= 4 else None
+                    notifier.send_new_shift(title, date_part, time_part)
+            
+            for event_dict in deleted_events:
+                title = event_dict['title']
+                time_str = change_detector.format_event_time(event_dict)
+                logger.info(f"📱 Notifying: Deleted event - {title} at {time_str}")
+                
+                if event_dict['all_day']:
+                    notifier.send_deleted_shift(title, time_str)
+                else:
+                    parts = time_str.split()
+                    date_part = ' '.join(parts[:3]) if len(parts) >= 3 else time_str
+                    time_part = parts[-1] if len(parts) >= 4 else None
+                    notifier.send_deleted_shift(title, date_part, time_part)
+            
+            for old, new in modified_events:
+                title = new['title']
+                old_time = change_detector.format_event_time(old)
+                new_time = change_detector.format_event_time(new)
+                logger.info(f"📱 Notifying: Modified event - {title}")
+                notifier.send_modified_shift(title, old_time, new_time)
+        
+        elif not is_first_run:
+            # Still track changes even without notifications
+            change_detector = ChangeDetector()
+            change_detector.detect_changes(all_events, config['sync']['days_ahead'])
+        else:
+            # First run - just save state
+            change_detector = ChangeDetector()
+            change_detector._save_current_state(all_events)
+        
         # Initialize calendar sync
         cal_sync = CalendarSync(
             url=config['icalendar']['url'],
@@ -155,13 +228,13 @@ def sync_scheduler(config):
     
     logger.info(f"Scheduler started - will sync every {config['sync']['interval_minutes']} minutes")
     
-    # Perform initial sync
-    perform_sync(config)
+    # Perform initial sync (mark as first run)
+    perform_sync(config, is_first_run=True)
     
-    # Then run on schedule
+    # Then run on schedule (subsequent runs detect changes)
     while True:
         time.sleep(interval_seconds)
-        perform_sync(config)
+        perform_sync(config, is_first_run=False)
 
 
 @app.route('/health')

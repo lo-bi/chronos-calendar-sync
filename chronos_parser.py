@@ -82,6 +82,18 @@ class ChronosEvent:
             clean_desc = self.description.replace('<br>', '\n').replace('&gt;', '>').replace('&lt;', '<')
             parts.append(clean_desc)
         return '\n'.join(parts)
+    
+    def get_unique_id(self) -> str:
+        """Generate unique identifier for this event"""
+        # Combine event type, date, and planning/code to create unique ID
+        start_str = self.start.isoformat() if self.start else 'no-date'
+        if self.event_id == 'HORAIRE':
+            return f"HORAIRE-{start_str}-{self.planning}"
+        elif self.event_id == 'ABSENCEJ':
+            return f"ABSENCE-{start_str}-{self.code}"
+        elif self.event_id == 'ACTIVITES':
+            return f"ACTIVITY-{start_str}-{self.lib}"
+        return f"{self.event_id}-{start_str}-{self.title}"
 
 
 class ChronosParser:
