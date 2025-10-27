@@ -29,8 +29,9 @@ That's it! Your calendar will sync automatically every hour.
 - 📅 Syncs working hours, absences (RTT, CA, etc.), and activities
 - ☁️ Direct integration with iCloud Calendar via CalDAV
 - 🤖 Headless browser authentication (supports JavaScript-based login)
-- � **Push notifications for planning changes** (via ntfy.sh)
-- �🐳 Docker container ready for Raspberry Pi deployment
+- 📱 **Push notifications for planning changes** (via ntfy.sh)
+- 📊 **Beautiful web dashboard** with statistics and charts (80% time tracking)
+- 🐳 Docker container ready for Raspberry Pi deployment
 - 🏥 Health check endpoint for monitoring
 - ⚙️ Configurable sync intervals and date ranges
 
@@ -103,6 +104,10 @@ ENABLE_NOTIFICATIONS=true
 # Application Configuration
 APP_PORT=8000
 APP_HOST=0.0.0.0
+
+# Dashboard Configuration (Optional - for web dashboard)
+DASHBOARD_PASSWORD=your-secure-password-here
+FLASK_SECRET_KEY=your-random-secret-key
 ```
 
 **Required environment variables:**
@@ -113,6 +118,10 @@ APP_HOST=0.0.0.0
 - `NTFY_TOPIC` - Your unique notification channel (e.g., `chronos-laura-123abc`)
 - `ENABLE_NOTIFICATIONS` - Set to `true` to enable push notifications
 - `NTFY_SERVER` - Server URL (default: `https://ntfy.sh`)
+
+**Optional for dashboard:**
+- `DASHBOARD_PASSWORD` - Password to access web dashboard
+- `FLASK_SECRET_KEY` - Secret key for session encryption
 
 **Optional environment variables** (with defaults):
 - `CHRONOS_BASE_URL` (default: `https://chpcb.chronos-saas.com`)
@@ -153,7 +162,32 @@ NTFY_TOPIC=chronos-laura-8472abc  # Use your random string
 
 **Note:** Events added exactly at your `SYNC_DAYS_AHEAD` boundary won't trigger notifications (to avoid noise from the sync window moving forward).
 
-### 4. Build and Run with Docker
+### 4. (Optional) Access Web Dashboard
+
+A beautiful web dashboard is available to visualize your statistics!
+
+**Step 1:** Set a dashboard password in `.env`:
+```bash
+DASHBOARD_PASSWORD=YourSecurePassword123
+```
+
+**Step 2:** Start the app (see section below)
+
+**Step 3:** Open in your browser:
+```
+http://localhost:8000/dashboard
+```
+
+**Features:**
+- 📊 Monthly statistics for the past year
+- 📈 Visual charts (hours worked vs. 80% target)
+- 📅 Upcoming weeks planning
+- 🔐 Password protected (30-day session)
+- 📱 Fully responsive (works on mobile!)
+
+See [DASHBOARD.md](DASHBOARD.md) for full documentation.
+
+### 5. Build and Run with Docker
 
 **Step 1:** Create a `.env` file with your credentials:
 

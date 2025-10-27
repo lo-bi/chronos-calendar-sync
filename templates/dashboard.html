@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronos Dashboard - Planning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        .today-pulse {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        /* Better mobile scrolling */
+        body {
+            -webkit-overflow-scrolling: touch;
+        }
+        /* Ensure charts are responsive */
+        canvas {
+            max-width: 100%;
+            height: auto !important;
+        }
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .mobile-padding {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            /* Better touch targets */
+            button, input {
+                min-height: 44px;
+            }
+            /* Much smaller day cards on mobile */
+            .day-card {
+                min-height: 80px !important;
+                padding: 0.375rem !important;
+            }
+            /* Smaller fonts for mobile */
+            .day-number {
+                font-size: 1.125rem !important;
+                line-height: 1.2 !important;
+            }
+            .day-hours {
+                font-size: 0.75rem !important;
+                line-height: 1.2 !important;
+            }
+            .day-name {
+                font-size: 0.625rem !important;
+                line-height: 1 !important;
+            }
+            .shift-icon {
+                width: 12px !important;
+                height: 12px !important;
+            }
+            .absence-text {
+                font-size: 0.625rem !important;
+                line-height: 1.2 !important;
+            }
+            /* Compact badge */
+            .today-badge {
+                font-size: 0.625rem !important;
+                padding: 1px 4px !important;
+            }
+        }
+        /* Better visibility for today */
+        .today-card {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
+            <div class="text-center mb-8">
+                <div class="bg-indigo-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h1 class="text-3xl font-bold text-gray-800">Chronos Dashboard</h1>
+                <p class="text-gray-600 mt-2">Statistiques et planning</p>
+            </div>
+            
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
+                    <input 
+                        type="password" 
+                        id="passwordInput"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                        placeholder="Entrez le mot de passe"
+                        required
+                    >
+                </div>
+                
+                <div class="flex items-center">
+                    <input 
+                        type="checkbox" 
+                        id="rememberMe" 
+                        checked
+                        class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                    >
+                    <label for="rememberMe" class="ml-2 text-sm text-gray-700">
+                        Se souvenir de moi (30 jours)
+                    </label>
+                </div>
+                
+                <div id="loginError" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    Mot de passe incorrect
+                </div>
+                
+                <button 
+                    type="submit"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition duration-200 transform hover:scale-105"
+                >
+                    Se connecter
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboardScreen" class="hidden">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-lg border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center h-16">
+                    <div class="flex items-center">
+                        <div class="bg-indigo-600 w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center mr-2 sm:mr-3">
+                            <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <h1 class="text-lg sm:text-2xl font-bold text-gray-800">Chronos Dashboard</h1>
+                    </div>
+                    <div class="flex items-center space-x-2 sm:space-x-4">
+                        <span class="text-xs sm:text-sm text-gray-600 hidden sm:inline" id="lastUpdate">Dernière mise à jour: --</span>
+                        <button onclick="logout()" class="text-gray-600 hover:text-gray-800 transition p-2" aria-label="Déconnexion">
+                            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
+            <!-- Daily Planning -->
+            <div class="bg-white rounded-xl shadow-lg p-3 sm:p-6 mb-8">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
+                    <h2 class="text-lg sm:text-xl font-bold text-gray-800">Planning</h2>
+                    <div class="flex items-center space-x-2 w-full sm:w-auto">
+                        <button onclick="changeMonth(-1)" class="p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0">
+                            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                            </svg>
+                        </button>
+                        <span id="currentMonthLabel" class="text-base sm:text-lg font-semibold text-gray-700 flex-1 text-center"></span>
+                        <button onclick="changeMonth(1)" class="p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0">
+                            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                        <button onclick="changeMonth(0)" class="ml-2 px-3 py-1 text-xs sm:text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition flex-shrink-0">
+                            Aujourd'hui
+                        </button>
+                    </div>
+                </div>
+                <div id="dailyPlanningContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-1 sm:gap-3">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 gap-4 sm:gap-6 mb-8">
+                <!-- Monthly Hours Chart -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">Heures Mensuelles (12 derniers mois)</h2>
+                    <canvas id="monthlyChart"></canvas>
+                    <div class="mt-4 flex items-center justify-center space-x-6 text-sm">
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 bg-indigo-500 rounded mr-2"></div>
+                            <span class="text-gray-600">Heures réelles</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 bg-gray-300 rounded mr-2"></div>
+                            <span class="text-gray-600">Objectif 80% (ajusté)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let monthlyChart = null;
+        let currentViewDate = new Date();
+        let allDailyData = [];
+
+        // Check authentication on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+        });
+
+        function changeMonth(offset) {
+            if (offset === 0) {
+                // Reset to current month
+                currentViewDate = new Date();
+            } else {
+                currentViewDate.setMonth(currentViewDate.getMonth() + offset);
+            }
+            // Reload data for the new month
+            loadMonthData();
+        }
+
+        async function loadMonthData() {
+            const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 
+                               'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+            const monthLabel = `${monthNames[currentViewDate.getMonth()]} ${currentViewDate.getFullYear()}`;
+            document.getElementById('currentMonthLabel').textContent = monthLabel;
+            
+            const year = currentViewDate.getFullYear();
+            const month = currentViewDate.getMonth() + 1; // JavaScript months are 0-indexed
+            
+            try {
+                const response = await fetch(`/api/dashboard/stats?year=${year}&month=${month}`);
+                const data = await response.json();
+                
+                allDailyData = data.daily_planning;
+                
+                // Find first day of month to add padding for correct week alignment
+                const firstDayOfMonth = new Date(year, month - 1, 1);
+                let dayOfWeek = firstDayOfMonth.getDay(); // 0=Sunday, 1=Monday...
+                // Convert to Monday=0, Sunday=6
+                dayOfWeek = (dayOfWeek + 6) % 7;
+                
+                updateDailyPlanningDisplay(allDailyData, dayOfWeek);
+            } catch (error) {
+                console.error('Failed to load month data:', error);
+            }
+        }
+
+        function updatePlanningView() {
+            const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 
+                               'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+            const monthLabel = `${monthNames[currentViewDate.getMonth()]} ${currentViewDate.getFullYear()}`;
+            document.getElementById('currentMonthLabel').textContent = monthLabel;
+            
+            // Filter data for current month
+            const year = currentViewDate.getFullYear();
+            const month = currentViewDate.getMonth();
+            
+            const filteredData = allDailyData.filter(day => {
+                const dayDate = new Date(day.date);
+                return dayDate.getFullYear() === year && dayDate.getMonth() === month;
+            });
+            
+            // Find first day of month to add padding for correct week alignment
+            const firstDayOfMonth = new Date(year, month, 1);
+            let dayOfWeek = firstDayOfMonth.getDay(); // 0=Sunday, 1=Monday...
+            // Convert to Monday=0, Sunday=6
+            dayOfWeek = (dayOfWeek + 6) % 7;
+            
+            updateDailyPlanningDisplay(filteredData, dayOfWeek);
+        }
+
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/dashboard/check-auth');
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    showDashboard();
+                    loadDashboardData();
+                } else {
+                    showLogin();
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                showLogin();
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const password = document.getElementById('passwordInput').value;
+            const remember = document.getElementById('rememberMe').checked;
+            
+            try {
+                const response = await fetch('/api/dashboard/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password, remember })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showDashboard();
+                    loadDashboardData();
+                } else {
+                    document.getElementById('loginError').classList.remove('hidden');
+                    setTimeout(() => {
+                        document.getElementById('loginError').classList.add('hidden');
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('Login failed:', error);
+                alert('Erreur de connexion');
+            }
+        });
+
+        async function logout() {
+            try {
+                await fetch('/api/dashboard/logout', { method: 'POST' });
+                showLogin();
+            } catch (error) {
+                console.error('Logout failed:', error);
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('dashboardScreen').classList.add('hidden');
+            document.getElementById('passwordInput').value = '';
+        }
+
+        function showDashboard() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardScreen').classList.remove('hidden');
+        }
+
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/dashboard/stats');
+                const data = await response.json();
+                
+                // Update last update time
+                const lastUpdate = new Date(data.last_updated);
+                document.getElementById('lastUpdate').textContent = `Dernière mise à jour: ${lastUpdate.toLocaleString('fr-FR')}`;
+                
+                // Update charts
+                updateMonthlyChart(data.past_year_monthly);
+                
+                // Load current month planning
+                loadMonthData();
+                
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+            }
+        }
+
+        function updateMonthlyChart(monthlyData) {
+            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            
+            if (monthlyChart) {
+                monthlyChart.destroy();
+            }
+            
+            monthlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: monthlyData.map(d => `${d.month} ${d.year}`),
+                    datasets: [
+                        {
+                            label: 'Heures travaillées',
+                            data: monthlyData.map(d => d.hours_worked),
+                            backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                            borderColor: 'rgb(99, 102, 241)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Objectif 80%',
+                            data: monthlyData.map(d => d.expected_hours_80),
+                            backgroundColor: 'rgba(209, 213, 219, 0.5)',
+                            borderColor: 'rgb(156, 163, 175)',
+                            borderWidth: 1,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Heures'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDailyPlanningDisplay(dailyData, paddingDays = 0) {
+            const container = document.getElementById('dailyPlanningContainer');
+            container.innerHTML = '';
+            
+            // Add padding cells for correct week alignment
+            for (let i = 0; i < paddingDays; i++) {
+                container.innerHTML += '<div class="rounded-lg p-3 border-2 border-gray-100 bg-gray-50 opacity-50"></div>';
+            }
+            
+            dailyData.forEach(day => {
+                const date = new Date(day.date);
+                const dayNum = date.getDate();
+                const monthShort = date.toLocaleDateString('fr-FR', { month: 'short' });
+                
+                // Determine shift type icon
+                let shiftIcon = '';
+                let shiftType = '';
+                if (day.events && day.events.length > 0) {
+                    const earliestStart = day.events.reduce((min, e) => e.start && (!min || e.start < min) ? e.start : min, null);
+                    const latestEnd = day.events.reduce((max, e) => e.end && (!max || e.end > max) ? e.end : max, null);
+                    
+                    if (earliestStart && latestEnd) {
+                        const startHour = parseInt(earliestStart.split(':')[0]);
+                        const endHour = parseInt(latestEnd.split(':')[0]);
+                        
+                        // Determine shift type based on hours with SVG icons
+                        if (startHour < 12 && endHour >= 18) {
+                            // Full day
+                            shiftIcon = '<svg class="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/></svg>';
+                            shiftType = 'Journée';
+                        } else if (startHour < 12) {
+                            // Morning
+                            shiftIcon = '<svg class="w-4 h-4 text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0z"/></svg>';
+                            shiftType = 'Matin';
+                        } else {
+                            // Afternoon
+                            shiftIcon = '<svg class="w-4 h-4 text-indigo-400" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>';
+                            shiftType = 'Après-midi';
+                        }
+                    }
+                }
+                
+                // Determine card styling - all working days (including weekends) have same color if worked
+                let cardClass = 'day-card rounded-lg p-2 sm:p-3 shadow-sm border-2 transition-all hover:shadow-md ';
+                let textColorClass = '';
+                
+                // Check if it's today
+                const today = new Date();
+                const isToday = date.getDate() === today.getDate() && 
+                               date.getMonth() === today.getMonth() && 
+                               date.getFullYear() === today.getFullYear();
+                
+                // Check if this is an ACTIVITES day (special color)
+                const isActivites = day.absences && day.absences.some(a => a.type && a.type.includes('ACTIVITES'));
+                
+                if (isActivites) {
+                    // Purple color for ACTIVITES
+                    cardClass += 'border-purple-400 bg-purple-50';
+                    textColorClass = 'text-purple-800';
+                } else if (day.is_absence) {
+                    cardClass += 'border-yellow-400 bg-yellow-50';
+                    textColorClass = 'text-yellow-800';
+                } else if (day.hours_worked > 0) {
+                    // Same color for all working days (weekdays and weekends)
+                    cardClass += 'border-green-400 bg-green-50';
+                    textColorClass = 'text-green-800';
+                } else if (day.is_weekend) {
+                    cardClass += 'border-gray-300 bg-gray-100';
+                    textColorClass = 'text-gray-600';
+                } else {
+                    cardClass += 'border-gray-200 bg-white';
+                    textColorClass = 'text-gray-500';
+                }
+                
+                // Add special styling for today - much more visible
+                if (isToday) {
+                    cardClass += ' today-card bg-indigo-100 border-indigo-600 border-4';
+                    textColorClass = 'text-indigo-900';
+                }
+                
+                // Build working hours display with start-end times and icon
+                let workingHoursHtml = '';
+                if (day.events && day.events.length > 0) {
+                    const earliestStart = day.events.reduce((min, e) => e.start && (!min || e.start < min) ? e.start : min, null);
+                    const latestEnd = day.events.reduce((max, e) => e.end && (!max || e.end > max) ? e.end : max, null);
+                    
+                    if (earliestStart && latestEnd) {
+                        workingHoursHtml = `
+                            <div class="mt-0.5 sm:mt-2 pt-0.5 sm:pt-2 border-t border-gray-200">
+                                <div class="text-[0.65rem] sm:text-xs font-medium text-gray-600 flex items-center justify-center gap-0.5 sm:gap-1">
+                                    <span class="shift-icon inline-block">${shiftIcon}</span>
+                                    <span class="whitespace-nowrap">${earliestStart} - ${latestEnd}</span>
+                                </div>
+                                <div class="text-xs text-gray-500 text-center mt-1 hidden sm:block">${shiftType}</div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // Show absence type if applicable
+                let absenceHtml = '';
+                if (day.is_absence && day.absences && day.absences.length > 0) {
+                    const absenceType = day.absences[0].type || 'Absence';
+                    const shortAbsence = absenceType.length > 15 ? absenceType.substring(0, 13) + '...' : absenceType;
+                    absenceHtml = `
+                        <div class="mt-0.5 sm:mt-2 pt-0.5 sm:pt-2 border-t ${isActivites ? 'border-purple-300' : 'border-yellow-300'}">
+                            <div class="absence-text text-xs font-medium ${isActivites ? 'text-purple-700' : 'text-yellow-700'} text-center truncate" title="${absenceType}">
+                                ${shortAbsence}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Today indicator badge - smaller on mobile
+                const todayBadge = isToday ? '<div class="today-badge absolute -top-1 -right-1 bg-indigo-600 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-lg">Auj.</div>' : '';
+                
+                const dayCard = `
+                    <div class="${cardClass} relative">
+                        ${todayBadge}
+                        <div class="text-center">
+                            <div class="day-name text-[0.625rem] sm:text-xs font-medium text-gray-500 uppercase">${day.day_name.substring(0, 3)}</div>
+                            <div class="day-number text-lg sm:text-2xl font-bold ${textColorClass} mt-0.5">${dayNum}</div>
+                            <div class="text-[0.625rem] sm:text-xs text-gray-400">${monthShort}</div>
+                        </div>
+                        <div class="mt-0.5 sm:mt-2 text-center">
+                            <div class="day-hours text-sm sm:text-lg font-bold ${day.hours_worked > 0 ? 'text-indigo-600' : 'text-gray-300'}">
+                                ${day.hours_worked > 0 ? day.hours_worked.toFixed(1) + 'h' : '—'}
+                            </div>
+                        </div>
+                        ${workingHoursHtml}
+                        ${absenceHtml}
+                    </div>
+                `;
+                
+                container.innerHTML += dayCard;
+            });
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadDashboardData, 5 * 60 * 1000);
+    </script>
+</body>
+</html>

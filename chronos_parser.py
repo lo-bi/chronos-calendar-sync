@@ -14,17 +14,28 @@ class ChronosEvent:
     
     def __init__(self, event_data: Dict[str, Any]):
         self.event_id = event_data.get('p_id', '')
-        self.title = event_data.get('p_title', '')
+        self.title = self._fix_encoding(event_data.get('p_title', ''))
         self.all_day = event_data.get('p_allday', 'true') == 'true'
         self.start = self._parse_date(event_data.get('p_start', ''))
         self.end = self._parse_date(event_data.get('p_end', ''))
-        self.description = event_data.get('p_desc', '')
+        self.description = self._fix_encoding(event_data.get('p_desc', ''))
         self.code = event_data.get('p_cod', '')
-        self.lib = event_data.get('p_lib', '')
+        self.lib = self._fix_encoding(event_data.get('p_lib', ''))
         self.planning = event_data.get('p_plg', '')
         self.duration = event_data.get('p_tpm', '')
         self.symbol = event_data.get('p_sym', '')
         self.abbreviation = event_data.get('p_abr', '')
+    
+    def _fix_encoding(self, text: str) -> str:
+        """Fix encoding issues (Latin-1 interpreted as UTF-8)"""
+        if not text:
+            return text
+        try:
+            # If text is already UTF-8, encode to Latin-1 then decode as UTF-8
+            return text.encode('latin-1').decode('utf-8')
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            # If that fails, return original
+            return text
         
     def _parse_date(self, date_str: str) -> datetime:
         """Parse date string from Chronos format"""

@@ -5,15 +5,17 @@ import logging
 import threading
 import time
 import os
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template, request, session
 from dotenv import load_dotenv
 from chronos_client import ChronosClient
 from chronos_parser import ChronosParser
 from calendar_sync import CalendarSync
 from notifier import Notifier
 from change_detector import ChangeDetector
+from dashboard import DashboardStats
 
 # Load environment variables from .env file
 load_dotenv()
@@ -30,11 +32,14 @@ sync_state = {
     'last_run': None,
     'last_status': 'never_run',
     'last_error': None,
-    'events_synced': 0
+    'events_synced': 0,
+    'all_events': []  # Store events for dashboard
 }
 
 # Flask app
 app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(24).hex())
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 
 def load_config():
@@ -101,16 +106,19 @@ def perform_sync(config, is_first_run=False):
         if not chronos.authenticate():
             raise Exception("Authentication failed")
         
-        # Calculate date range
-        start_date = datetime.now()
-        end_date = start_date + timedelta(days=config['sync']['days_ahead'])
+        # Calculate date range - fetch past year AND future for dashboard
+        now = datetime.now()
+        # For dashboard: get past year data
+        past_year_start = now - timedelta(days=365)
+        # For calendar sync: get future data
+        future_end = now + timedelta(days=config['sync']['days_ahead'])
         
-        logger.info(f"Fetching data from {start_date.date()} to {end_date.date()}")
+        logger.info(f"Fetching data from {past_year_start.date()} to {future_end.date()}")
         
-        # Fetch all data types
-        schedule_xml = chronos.fetch_schedule(start_date, end_date)
-        absences_xml = chronos.fetch_absences(start_date, end_date)
-        activities_xml = chronos.fetch_activities(start_date, end_date)
+        # Fetch all data types (full range for dashboard)
+        schedule_xml = chronos.fetch_schedule(past_year_start, future_end)
+        absences_xml = chronos.fetch_absences(past_year_start, future_end)
+        activities_xml = chronos.fetch_activities(past_year_start, future_end)
         
         # Parse XML responses
         parser = ChronosParser()
@@ -121,7 +129,11 @@ def perform_sync(config, is_first_run=False):
         # Merge events (absences take priority over work schedule)
         all_events = parser.merge_events(schedule_events, absence_events, activity_events)
         
-        logger.info(f"Total events to sync: {len(all_events)}")
+        logger.info(f"Total events fetched: {len(all_events)}")
+        
+        # For calendar sync, filter to only future events
+        calendar_events = [e for e in all_events if e.start and e.start >= now]
+        logger.info(f"Events to sync to calendar: {len(calendar_events)}")
         
         # Initialize notifier if enabled
         notifier = None
@@ -204,14 +216,15 @@ def perform_sync(config, is_first_run=False):
         
         # Sync events
         logger.info("Syncing events to calendar...")
-        if not cal_sync.sync_events(all_events):
+        if not cal_sync.sync_events(calendar_events):
             raise Exception("Failed to sync events")
         
-        # Update state
+        # Update state (store ALL events for dashboard, not just calendar ones)
         sync_state['last_status'] = 'success'
         sync_state['last_error'] = None
-        sync_state['events_synced'] = len(all_events)
-        logger.info(f"Sync completed successfully - {len(all_events)} events synced")
+        sync_state['events_synced'] = len(calendar_events)
+        sync_state['all_events'] = all_events  # Store for dashboard (includes past year)
+        logger.info(f"Sync completed successfully - {len(calendar_events)} events synced to calendar, {len(all_events)} total events loaded for dashboard")
         logger.info("=" * 50)
         
     except Exception as e:
@@ -246,6 +259,117 @@ def health():
         'last_error': sync_state['last_error'],
         'events_synced': sync_state['events_synced']
     })
+
+
+@app.route('/')
+@app.route('/dashboard')
+def dashboard_page():
+    """Dashboard page"""
+    return render_template('dashboard.html')
+
+
+@app.route('/api/dashboard/check-auth')
+def check_auth():
+    """Check if user is authenticated"""
+    return jsonify({
+        'authenticated': session.get('authenticated', False)
+    })
+
+
+@app.route('/api/dashboard/login', methods=['POST'])
+def dashboard_login():
+    """Login to dashboard"""
+    data = request.get_json()
+    password = data.get('password', '')
+    remember = data.get('remember', False)
+    
+    # Get dashboard password from environment
+    correct_password = os.getenv('DASHBOARD_PASSWORD', 'chronos2025')
+    
+    # Simple password check (in production, use proper hashing)
+    if password == correct_password:
+        session['authenticated'] = True
+        if remember:
+            session.permanent = True
+        return jsonify({'success': True})
+    else:
+        return jsonify({'success': False}), 401
+
+
+@app.route('/api/dashboard/logout', methods=['POST'])
+def dashboard_logout():
+    """Logout from dashboard"""
+    session.clear()
+    return jsonify({'success': True})
+
+
+@app.route('/api/dashboard/stats')
+def dashboard_stats():
+    """Get dashboard statistics"""
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        # Get events from sync state
+        all_events = sync_state.get('all_events', [])
+        
+        if not all_events:
+            return jsonify({
+                'summary': {
+                    'total_hours_past_year': 0,
+                    'expected_hours_80_past_year': 0,
+                    'average_monthly_hours': 0,
+                    'current_month_hours': 0,
+                    'current_week_hours': 0
+                },
+                'past_year_monthly': [],
+                'upcoming_weeks': [],
+                'last_updated': datetime.now().isoformat()
+            })
+        
+        # Initialize dashboard stats calculator
+        dashboard = DashboardStats(None)
+        
+        # Calculate date ranges
+        now = datetime.now()
+        past_year_start = now - timedelta(days=365)
+        upcoming_end = now + timedelta(days=90)
+        
+        # Calculate monthly stats for past year
+        past_year_monthly = dashboard.get_monthly_stats(all_events, past_year_start, now)
+        
+        # Calculate weekly stats for upcoming period
+        upcoming_weeks = dashboard.get_week_stats(all_events, now, upcoming_end)
+        
+        # Calculate summary statistics
+        total_hours_past_year = sum(m['hours_worked'] for m in past_year_monthly)
+        average_monthly_hours = round(total_hours_past_year / len(past_year_monthly), 2) if past_year_monthly else 0
+        
+        # Current month and week
+        current_month = now.strftime('%Y-%m')
+        current_month_data = next((m for m in past_year_monthly if f"{m['year']}-{m['month_num']:02d}" == current_month), None)
+        current_month_hours = current_month_data['hours_worked'] if current_month_data else 0
+        
+        current_week_data = upcoming_weeks[0] if upcoming_weeks else None
+        current_week_hours = current_week_data['hours_worked'] if current_week_data else 0
+        
+        # Return full dashboard data
+        return jsonify({
+            'summary': {
+                'total_hours_past_year': round(total_hours_past_year, 2),
+                'expected_hours_80_past_year': round(121.24 * len(past_year_monthly), 2),
+                'average_monthly_hours': average_monthly_hours,
+                'current_month_hours': round(current_month_hours, 2),
+                'current_week_hours': round(current_week_hours, 2)
+            },
+            'past_year_monthly': past_year_monthly,
+            'upcoming_weeks': upcoming_weeks,
+            'last_updated': sync_state.get('last_run', datetime.now().isoformat())
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting dashboard stats: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 def main():
