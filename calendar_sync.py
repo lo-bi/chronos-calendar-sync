@@ -100,9 +100,13 @@ class CalendarSync:
             deleted_count = 0
             for event in events:
                 try:
-                    # Check if this is a Chronos event (by UID or summary prefix)
+                    # Check if this is a Chronos event by UID pattern
                     cal_data = event.data
-                    if 'CHRONOS-SYNC' in cal_data or 'Work:' in cal_data or 'Activity:' in cal_data:
+                    
+                    # Check for our UID pattern or CHRONOS-SYNC category
+                    if ('chronos-' in cal_data.lower() and 'CHRONOS-SYNC' in cal_data) or \
+                       'CATEGORY:CHRONOS-SYNC' in cal_data:
+                        logger.debug(f"Deleting event: {event.url}")
                         event.delete()
                         deleted_count += 1
                 except Exception as e:
@@ -113,6 +117,35 @@ class CalendarSync:
                 
         except Exception as e:
             logger.warning(f"Could not clear existing events: {e}")
+    
+    def clear_all_chronos_events(self):
+        """Delete ALL Chronos events from the calendar (for bulk update)"""
+        try:
+            logger.info("Searching for all CHRONOS-SYNC events to delete...")
+            
+            # Get all events from calendar
+            all_events = self.calendar.events()
+            
+            deleted_count = 0
+            for event in all_events:
+                try:
+                    cal_data = event.data
+                    
+                    # Check if this is a Chronos event
+                    if ('chronos-' in cal_data.lower() and 'CHRONOS-SYNC' in cal_data) or \
+                       'CATEGORY:CHRONOS-SYNC' in cal_data:
+                        logger.debug(f"Deleting event: {event.url}")
+                        event.delete()
+                        deleted_count += 1
+                except Exception as e:
+                    logger.warning(f"Could not delete event: {e}")
+            
+            logger.info(f"Deleted {deleted_count} total CHRONOS-SYNC events")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Error clearing all events: {e}")
+            return 0
     
     def _add_event(self, chronos_event: ChronosEvent):
         """Add a single event to the calendar"""

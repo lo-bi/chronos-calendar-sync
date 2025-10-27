@@ -10,3 +10,4 @@ venv/
 data/*.db
 data/*.json
 .DS_Store
+chronos_sync.db

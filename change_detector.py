@@ -105,6 +105,7 @@ class ChangeDetector:
         
         # Filter out events at the boundary (exactly SYNC_DAYS_AHEAD)
         boundary_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=sync_days_ahead)
+        now = datetime.now()
         
         def is_at_boundary(event_dict: Dict) -> bool:
             """Check if event is at the sync boundary"""
@@ -113,24 +114,31 @@ class ChangeDetector:
             event_date = datetime.fromisoformat(event_dict['start']).date()
             return event_date == boundary_date.date()
         
-        # Find new events (excluding boundary)
+        def is_past_event(event_dict: Dict) -> bool:
+            """Check if event is in the past - don't notify about past events"""
+            if not event_dict.get('start'):
+                return False
+            event_datetime = datetime.fromisoformat(event_dict['start'])
+            return event_datetime < now
+        
+        # Find new events (excluding boundary and past events)
         new_events = []
         for uid in new_uids:
             event_dict = current_state[uid]
-            if not is_at_boundary(event_dict):
+            if not is_at_boundary(event_dict) and not is_past_event(event_dict):
                 # Find the original event object
                 event_obj = next((e for e in current_events if self._event_to_dict(e)['uid'] == uid), None)
                 if event_obj:
                     new_events.append(event_obj)
         
-        # Find deleted events (excluding boundary)
+        # Find deleted events (excluding boundary and past events)
         deleted_events = []
         for uid in deleted_uids:
             event_dict = previous_state[uid]
-            if not is_at_boundary(event_dict):
+            if not is_at_boundary(event_dict) and not is_past_event(event_dict):
                 deleted_events.append(event_dict)
         
-        # Find modified events
+        # Find modified events (excluding past events)
         modified_events = []
         for uid in potentially_modified_uids:
             old = previous_state[uid]
@@ -142,7 +150,7 @@ class ChangeDetector:
                 old['end'] != new['end'] or
                 old['description'] != new['description']):
                 
-                if not is_at_boundary(new):
+                if not is_at_boundary(new) and not is_past_event(new):
                     modified_events.append((old, new))
         
         # Save current state for next comparison
