@@ -7,7 +7,7 @@ import time
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from dotenv import load_dotenv
 from chronos_client import ChronosClient
 from chronos_parser import ChronosParser
@@ -35,6 +35,23 @@ sync_state = {
 
 # Flask app
 app = Flask(__name__)
+
+
+@app.before_request
+def require_authentication():
+    """Global authentication for all endpoints"""
+    auth_username = app.config.get('HEALTH_USERNAME')
+    auth_password = app.config.get('HEALTH_PASSWORD')
+    
+    # If auth is configured, require it for all requests
+    if auth_username and auth_password:
+        auth = request.authorization
+        
+        if not auth or auth.username != auth_username or auth.password != auth_password:
+            logger.warning(f"Unauthorized access attempt from {request.remote_addr} to {request.path}")
+            return jsonify({'error': 'Unauthorized'}), 401, {
+                'WWW-Authenticate': 'Basic realm="Authentication Required"'
+            }
 
 
 def load_config():
@@ -71,7 +88,9 @@ def load_config():
         },
         'app': {
             'port': int(get_env('APP_PORT', '8000', required=False)),
-            'host': get_env('APP_HOST', '0.0.0.0', required=False)
+            'host': get_env('APP_HOST', '0.0.0.0', required=False),
+            'health_username': get_env('HEALTH_CHECK_USERNAME', '', required=False),
+            'health_password': get_env('HEALTH_CHECK_PASSWORD', '', required=False)
         }
     }
     
@@ -263,11 +282,21 @@ def main():
         )
         scheduler_thread.start()
         
+        # Store health auth in app config
+        app.config['HEALTH_USERNAME'] = config['app']['health_username']
+        app.config['HEALTH_PASSWORD'] = config['app']['health_password']
+        
         # Start Flask web server
         host = config['app']['host']
         port = config['app']['port']
         logger.info(f"Starting web server on {host}:{port}")
-        logger.info(f"Health endpoint available at http://{host}:{port}/health")
+        
+        if config['app']['health_username'] and config['app']['health_password']:
+            logger.info(f"Server endpoint: http://{config['app']['health_username']}:***@{host}:{port}/")
+            logger.info("HTTP Basic Auth enabled for all endpoints")
+        else:
+            logger.info(f"Health endpoint available at http://{host}:{port}/health")
+            logger.warning("Server authentication disabled - set HEALTH_CHECK_USERNAME and HEALTH_CHECK_PASSWORD for security")
         
         app.run(host=host, port=port, debug=False)
         

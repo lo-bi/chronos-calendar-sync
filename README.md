@@ -103,6 +103,10 @@ ENABLE_NOTIFICATIONS=true
 # Application Configuration
 APP_PORT=8000
 APP_HOST=0.0.0.0
+
+# Health Check Security (recommended for internet-facing servers)
+HEALTH_CHECK_USERNAME=admin
+HEALTH_CHECK_PASSWORD=your-secure-password
 ```
 
 **Required environment variables:**
@@ -113,6 +117,11 @@ APP_HOST=0.0.0.0
 - `NTFY_TOPIC` - Your unique notification channel (e.g., `chronos-laura-123abc`)
 - `ENABLE_NOTIFICATIONS` - Set to `true` to enable push notifications
 - `NTFY_SERVER` - Server URL (default: `https://ntfy.sh`)
+
+**Optional for security:**
+- `HEALTH_CHECK_USERNAME` - HTTP Basic Auth username for all endpoints
+- `HEALTH_CHECK_PASSWORD` - HTTP Basic Auth password for all endpoints
+- If set, all server endpoints will require authentication (recommended for internet-facing deployments)
 
 **Optional environment variables** (with defaults):
 - `CHRONOS_BASE_URL` (default: `https://chpcb.chronos-saas.com`)
@@ -238,7 +247,11 @@ python main.py
 Check the sync status at any time:
 
 ```bash
+# Without authentication
 curl http://localhost:8000/health
+
+# With HTTP Basic Auth (if configured)
+curl -u admin:your-password http://localhost:8000/health
 ```
 
 Response example:
@@ -256,11 +269,17 @@ Status values:
 - `success`: Last sync completed successfully
 - `failed`: Last sync failed (check `last_error`)
 
+**Security Note:** If you're exposing this to the internet (for monitoring services like Betterstack, UptimeRobot, etc.), set `HEALTH_CHECK_USERNAME` and `HEALTH_CHECK_PASSWORD` in your `.env` file. This will protect ALL endpoints from unauthorized access and bot attacks.
+
 ### Accessing from Raspberry Pi Network
 
 If your Raspberry Pi is at IP `192.168.1.100`:
 ```bash
+# Without authentication
 curl http://192.168.1.100:8000/health
+
+# With authentication
+curl -u admin:your-password http://192.168.1.100:8000/health
 ```
 
 ## Configuration Options
@@ -448,6 +467,7 @@ Set up a simple monitoring script:
 ```bash
 #!/bin/bash
 # check-sync.sh
+# If using Basic Auth, use: curl -s -u username:password http://...
 STATUS=$(curl -s http://localhost:8000/health | jq -r .status)
 if [ "$STATUS" != "success" ]; then
   echo "Sync failed! Status: $STATUS"

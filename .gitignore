@@ -1,13 +1,2 @@
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-*.log
-.env
-data/*.db
-data/*.json
-.DS_Store
-chronos_sync.db
+# Created by venv; see https://docs.python.org/3/library/venv.html
+*
